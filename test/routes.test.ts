@@ -51,7 +51,7 @@ describe("POST /generate", () => {
   it("rejects a malformed body", async () => {
     const response = await app.request(
       "/generate",
-      { method: "POST", headers: { "content-type": "application/json" }, body: "{" },
+      { method: "POST", headers: { "content-type": "application/json", ...authHeaders }, body: "{" },
       env,
     );
     expect(response.status).toBe(400);
@@ -64,7 +64,7 @@ describe("POST /generate", () => {
       "/generate",
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...authHeaders },
         body: JSON.stringify({ intent: "x" }),
       },
       { ...env, OCTOPUS_ENGINE_MOCK: "false", LORE_PROVIDER: "none", THREE_D_PROVIDER: "mock" } as unknown as Env,

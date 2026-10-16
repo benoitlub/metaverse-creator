@@ -21,3 +21,9 @@ LORE_API_KEY=
 THREE_D_PROVIDER=mock
 THREE_D_API_URL=
 THREE_D_API_KEY=
+
+# Explicit local opt-in. Use a random >=24-character token; do not publish it.
+GENERATION_ENABLED=true
+GENERATION_API_TOKEN=replace-with-a-random-very-long-local-token
+PAID_GENERATION_ENABLED=false
+MAX_PAID_JOBS_PER_DAY=1

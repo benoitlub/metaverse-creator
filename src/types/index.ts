@@ -1,5 +1,7 @@
 export interface GenerateRequest {
-  intent: string;
+  intent?: string;
+  /** Ordered views: front first. Use HTTPS URLs or PNG/JPEG/WebP base64 data URIs. */
+  imageUrls?: string[];
 }
 
 export interface LoreContext {
@@ -41,6 +43,7 @@ export interface AssetJobInput {
   negativePrompt?: string;
   seed?: number;
   format: "glb";
+  imageUrls?: string[];
 }
 
 /** Normalised view of a job held by an external asset provider. */

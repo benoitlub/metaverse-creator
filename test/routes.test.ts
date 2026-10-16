@@ -4,7 +4,11 @@ import type { Env } from "../src/index";
 import { encodeJobId } from "../src/adapters/three-d/job-id";
 
 /** Everything mocked: no network, no credential. */
+const token = "long-private-route-tests-token-123456789";
+const authHeaders = { authorization: `Bearer ${token}` };
 const env = {
+  GENERATION_ENABLED: "true",
+  GENERATION_API_TOKEN: token,
   OCTOPUS_ENGINE_MOCK: "true",
   LORE_PROVIDER: "mock",
   THREE_D_PROVIDER: "mock",
@@ -15,7 +19,7 @@ const generate = (body: unknown) =>
     "/generate",
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...authHeaders },
       body: JSON.stringify(body),
     },
     env,
@@ -47,7 +51,7 @@ describe("POST /generate", () => {
   it("rejects a malformed body", async () => {
     const response = await app.request(
       "/generate",
-      { method: "POST", headers: { "content-type": "application/json" }, body: "{" },
+      { method: "POST", headers: { "content-type": "application/json", ...authHeaders }, body: "{" },
       env,
     );
     expect(response.status).toBe(400);
@@ -60,10 +64,10 @@ describe("POST /generate", () => {
       "/generate",
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...authHeaders },
         body: JSON.stringify({ intent: "x" }),
       },
-      { LORE_PROVIDER: "none", THREE_D_PROVIDER: "mock" } as unknown as Env,
+      { ...env, OCTOPUS_ENGINE_MOCK: "false", LORE_PROVIDER: "none", THREE_D_PROVIDER: "mock" } as unknown as Env,
     );
 
     expect(live.status).toBe(502);
@@ -79,7 +83,7 @@ describe("GET /jobs/:jobId", () => {
       any
     >;
 
-    const response = await app.request(`/jobs/${created.job.id}/model.glb`, {}, env);
+    const response = await app.request(`/jobs/${created.job.id}/model.glb`, { headers: authHeaders }, env);
     expect(response.status).toBe(409);
 
     const body = (await response.json()) as Record<string, any>;
@@ -90,14 +94,14 @@ describe("GET /jobs/:jobId", () => {
     // The mock job id encodes its creation time: forge an already-old one.
     const jobId = encodeJobId("mock", `${Date.now() - 60_000}_lantern`);
 
-    const status = (await (await app.request(`/jobs/${jobId}`, {}, env)).json()) as Record<
+    const status = (await (await app.request(`/jobs/${jobId}`, { headers: authHeaders }, env)).json()) as Record<
       string,
       any
     >;
     expect(status.state).toBe("succeeded");
     expect(status.ready).toBe(true);
 
-    const response = await app.request(`/jobs/${jobId}/model.glb`, {}, env);
+    const response = await app.request(`/jobs/${jobId}/model.glb`, { headers: authHeaders }, env);
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("model/gltf-binary");
 
@@ -106,7 +110,7 @@ describe("GET /jobs/:jobId", () => {
   });
 
   it("rejects an unreadable job id", async () => {
-    const response = await app.request("/jobs/not-a-job-id/model.glb", {}, env);
+    const response = await app.request("/jobs/not-a-job-id/model.glb", { headers: authHeaders }, env);
     expect(response.status).toBe(400);
   });
 });

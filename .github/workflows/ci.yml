@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/creature-sync-multiview-safety]
   pull_request:
-    branches: [main]
+    branches: [main, feature/creature-sync-multiview-safety]
 
 jobs:
   verify:

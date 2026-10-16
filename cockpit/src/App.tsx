@@ -12,11 +12,12 @@ import {
   Sparkles,
   Workflow,
 } from "lucide-react";
-import { getApiBase, setApiBase } from "./services/config";
+import { getApiBase, setApiBase, getApiToken, setApiToken } from "./services/config";
 import {
   getHealth,
   getJob,
-  modelUrl,
+  downloadModel,
+  startImageGeneration,
   startGeneration,
   type GenerationStarted,
   type Health,
@@ -67,8 +68,9 @@ export function App() {
 
   useEffect(refreshHealth, [refreshHealth]);
 
-  const saveApi = () => {
+  const saveApi = (token: string) => {
     setApiBase(apiBase);
+    setApiToken(token);
     setApiBaseState(getApiBase());
     refreshHealth();
   };
@@ -267,9 +269,24 @@ function Dashboard({
 
 const POLL_INTERVAL_MS = 1_500;
 
+function toDataUri(file: File): Promise<string> {
+  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 5_000_000) {
+    return Promise.reject(new Error("Choose PNG, JPEG or WebP files smaller than 5 MB each"));
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Image conversion failed"));
+    reader.onerror = () => reject(new Error("Cannot read image"));
+    reader.readAsDataURL(file);
+  });
+}
+
+
 /** Intent form, then live job polling through to the downloadable model. */
 function GenerationPanel({ health }: { health: Health | null }) {
   const [intent, setIntent] = useState("");
+  const [mode, setMode] = useState<"text" | "images">("text");
+  const [images, setImages] = useState<File[]>([]);
   const [started, setStarted] = useState<GenerationStarted | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -287,7 +304,7 @@ function GenerationPanel({ health }: { health: Health | null }) {
 
   const submit = async () => {
     const trimmed = intent.trim();
-    if (!trimmed || busy) return;
+    if (busy || (mode === "text" && !trimmed) || (mode === "images" && images.length === 0)) return;
 
     stopPolling();
     setBusy(true);
@@ -296,7 +313,9 @@ function GenerationPanel({ health }: { health: Health | null }) {
     setJob(null);
 
     try {
-      const response = await startGeneration(trimmed);
+      const response = mode === "images"
+        ? await startImageGeneration(await Promise.all(images.map(toDataUri)), trimmed)
+        : await startGeneration(trimmed);
       setStarted(response);
       setJob({
         id: response.job.id,
@@ -340,6 +359,19 @@ function GenerationPanel({ health }: { health: Health | null }) {
             : "The service is unreachable — check the base URL in Settings."}
         </p>
         <label>
+          Mode
+          <select value={mode} onChange={(event) => setMode(event.target.value as "text" | "images")}>
+            <option value="text">Text-to-3D</option>
+            <option value="images">Multi-view image-to-3D (Meshy)</option>
+          </select>
+        </label>
+        {mode === "images" && <label>
+          Reference images (1–4; FRONT first, PNG/JPEG/WebP, max 5 MB per image)
+          <input type="file" accept="image/png,image/jpeg,image/webp" multiple
+            onChange={(event) => setImages(Array.from(event.target.files ?? []).slice(0, 4))} />
+          <small>{images.length} reference image(s) selected. Paid generation requires explicit server opt-in.</small>
+        </label>}
+        <label>
           Intention
           <textarea
             rows={3}
@@ -349,7 +381,7 @@ function GenerationPanel({ health }: { health: Health | null }) {
           />
         </label>
         <div className="actions">
-          <button className="primary" onClick={submit} disabled={busy || !intent.trim()}>
+          <button className="primary" onClick={submit} disabled={busy || (mode === "text" ? !intent.trim() : images.length === 0)}>
             {busy ? "Starting…" : "Generate"}
           </button>
         </div>
@@ -384,14 +416,14 @@ function GenerationPanel({ health }: { health: Health | null }) {
             </p>
             {job.error !== undefined && <p className="muted">{job.error}</p>}
             <div className="actions">
-              <a
+              <button
                 className={job.ready ? "primary" : "secondary disabled"}
-                href={job.ready ? modelUrl(job.id) : undefined}
-                aria-disabled={!job.ready}
-                download
+                disabled={!job.ready}
+                onClick={() => void downloadModel(job.id).catch((downloadError: unknown) =>
+                  setError(errorMessage(downloadError, "GLB download failed")))}
               >
                 <Download size={14} /> {job.ready ? "Download GLB" : "Waiting for the model…"}
-              </a>
+              </button>
             </div>
           </section>
 
@@ -475,8 +507,9 @@ function SettingsPanel({
 }: {
   apiBase: string;
   setApiBase: (value: string) => void;
-  saveApi: () => void;
+  saveApi: (token: string) => void;
 }) {
+  const [token, setToken] = useState(getApiToken());
   return (
     <div className="content">
       <section className="panel settings">
@@ -487,8 +520,12 @@ function SettingsPanel({
           API base URL
           <input value={apiBase} onChange={(event) => setValue(event.target.value)} />
         </label>
+        <label>
+          Generation token (stored for this tab only)
+          <input type="password" autoComplete="off" value={token} onChange={(event) => setToken(event.target.value)} />
+        </label>
         <div className="actions">
-          <button className="primary" onClick={saveApi}>
+          <button className="primary" onClick={() => saveApi(token)}>
             Save &amp; test
           </button>
         </div>

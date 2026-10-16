@@ -5,6 +5,7 @@ import { createLoreProvider } from "../adapters/lore";
 import { createProviderForJob, createThreeDProvider } from "../adapters/three-d";
 import { decodeJobId, encodeJobId } from "../adapters/three-d/job-id";
 import type { GenerateRequest } from "../types";
+import { generationAccess, jobAccess, reservePaidJob, validateImageUrls } from "../security/generation";
 
 const MAX_INTENT_LENGTH = 4_000;
 
@@ -23,6 +24,8 @@ const links = (jobId: string) => ({
  * status route and then download the model.
  */
 generateRoute.post("/generate", async (c) => {
+  const forbidden = generationAccess(c.req.raw, c.env);
+  if (forbidden) return forbidden;
   let body: GenerateRequest;
 
   try {
@@ -33,46 +36,83 @@ generateRoute.post("/generate", async (c) => {
 
   const intent = typeof body?.intent === "string" ? body.intent.trim() : "";
 
-  if (!intent) {
-    return c.json({ error: "intent must be a non-empty string" }, 400);
+  const hasImageInput = Object.prototype.hasOwnProperty.call(body ?? {}, "imageUrls");
+  let imageUrls: string[] = [];
+  if (hasImageInput) {
+    try { imageUrls = validateImageUrls(body.imageUrls); }
+    catch (error) { return c.json({ error: (error as Error).message }, 400); }
   }
 
+  if (!intent && !imageUrls.length) {
+    return c.json({ error: "intent or imageUrls must be supplied" }, 400);
+  }
   if (intent.length > MAX_INTENT_LENGTH) {
     return c.json({ error: `intent must not exceed ${MAX_INTENT_LENGTH} characters` }, 400);
   }
 
-  try {
-    const loreProvider = createLoreProvider(c.env);
-    const lore = await loreProvider.getContext(intent);
-    const generation = await generatePrompt(intent, lore, c.env);
+  const selectedProvider = (c.env.THREE_D_PROVIDER ?? "mock").trim().toLowerCase();
+  if (imageUrls.length && !["mock", "meshy"].includes(selectedProvider)) {
+    return c.json({ error: "Multi-view mode currently supports Meshy or explicit mock only" }, 400);
+  }
 
-    const provider = createThreeDProvider(c.env);
-    const job = await provider.createJob({ prompt: generation.prompt, format: "glb" });
+  try {
+    let prompt: string;
+    let loreSource: string;
+    let backendStatus: string;
+    let operationId: string | undefined;
+
+    if (imageUrls.length) {
+      // Image-guided reconstruction needs no Octopus executor: pass image views
+      // directly to Meshy. The optional intent is only an audit description.
+      prompt = intent || "Image-guided 3D reconstruction from supplied views";
+      loreSource = "image-views";
+      backendStatus = "not-needed";
+    } else {
+      const loreProvider = createLoreProvider(c.env);
+      const lore = await loreProvider.getContext(intent);
+      const generation = await generatePrompt(intent, lore, c.env);
+      prompt = generation.prompt;
+      loreSource = lore.source;
+      backendStatus = generation.backendStatus;
+      operationId = generation.operationId;
+    }
+
+    const provider = createThreeDProvider(
+      c.env,
+      imageUrls.length ? (selectedProvider === "meshy" ? "meshy-multi" : "mock") : undefined,
+    );
+
+    // Atomic quota reservation before every paid provider request.
+    if (provider.name !== "mock") {
+      const rejected = await reservePaidJob(c.env);
+      if (rejected) return rejected;
+    }
+
+    const job = await provider.createJob({
+      prompt,
+      format: "glb",
+      ...(imageUrls.length ? { imageUrls } : {}),
+    });
     const jobId = encodeJobId(job.provider, job.providerJobId);
 
-    return c.json(
-      {
-        status: "accepted",
-        intent,
-        prompt: generation.prompt,
-        provider: job.provider,
-        job: {
-          id: jobId,
-          state: job.state,
-          ...(job.progress !== undefined ? { progress: job.progress } : {}),
-        },
-        links: links(jobId),
-        // Traceability: a generated result records where its context came from
-        // and when it was produced.
-        trace: {
-          generatedAt: new Date().toISOString(),
-          loreSource: lore.source,
-          backendStatus: generation.backendStatus,
-          ...(generation.operationId ? { operationId: generation.operationId } : {}),
-        },
+    return c.json({
+      status: "accepted",
+      intent: intent || "Multi-view image reconstruction",
+      prompt,
+      provider: job.provider,
+      job: {
+        id: jobId,
+        state: job.state,
+        ...(job.progress !== undefined ? { progress: job.progress } : {}),
       },
-      202,
-    );
+      links: links(jobId),
+      trace: {
+        generatedAt: new Date().toISOString(),
+        loreSource,
+        backendStatus,
+        ...(operationId ? { operationId } : {}),
+      },
+    }, 202);
   } catch (error) {
     // The backend has no executor for the capability: report it as its own
     // condition instead of silently substituting a locally composed prompt.
@@ -95,6 +135,8 @@ generateRoute.post("/generate", async (c) => {
 
 /** Progress of an asset job. The job id carries the provider: no storage needed. */
 generateRoute.get("/jobs/:jobId", async (c) => {
+  const forbidden = jobAccess(c.req.raw, c.env);
+  if (forbidden) return forbidden;
   const jobId = c.req.param("jobId");
 
   try {
@@ -119,6 +161,8 @@ generateRoute.get("/jobs/:jobId", async (c) => {
 
 /** Streams the generated model. Nothing is stored by this service. */
 generateRoute.get("/jobs/:jobId/model.glb", async (c) => {
+  const forbidden = jobAccess(c.req.raw, c.env);
+  if (forbidden) return forbidden;
   const jobId = c.req.param("jobId");
 
   let providerJobId: string;

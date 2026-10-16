@@ -1,10 +1,11 @@
 import type { Env } from "../../index";
 import type { ThreeDProvider } from "../../types";
 import { MeshyProvider } from "./meshy";
+import { MeshyMultiImageProvider } from "./meshy-multi";
 import { MockThreeDProvider } from "./mock";
 import { TripoProvider } from "./tripo";
 
-export const SUPPORTED_PROVIDERS = ["mock", "meshy", "tripo"] as const;
+export const SUPPORTED_PROVIDERS = ["mock", "meshy", "meshy-multi", "tripo"] as const;
 
 /**
  * Single switching point between asset providers.
@@ -18,6 +19,8 @@ export function createThreeDProvider(env: Env, override?: string): ThreeDProvide
       return new MockThreeDProvider();
     case "meshy":
       return new MeshyProvider(env.THREE_D_API_KEY ?? "", env.THREE_D_API_URL);
+    case "meshy-multi":
+      return new MeshyMultiImageProvider(env.THREE_D_API_KEY ?? "", env.THREE_D_API_URL);
     case "tripo":
       return new TripoProvider(env.THREE_D_API_KEY ?? "", env.THREE_D_API_URL);
     default:
@@ -42,4 +45,5 @@ export function createProviderForJob(env: Env, provider: string): ThreeDProvider
 
 export { MockThreeDProvider } from "./mock";
 export { MeshyProvider } from "./meshy";
+export { MeshyMultiImageProvider } from "./meshy-multi";
 export { TripoProvider } from "./tripo";

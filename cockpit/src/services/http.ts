@@ -1,4 +1,4 @@
-import { getApiBase } from "./config";
+import { getApiBase, getApiToken } from "./config";
 
 /**
  * Carries the response body alongside the status.
@@ -27,6 +27,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
       ...init,
       headers: {
         Accept: "application/json",
+        ...(getApiToken() ? { Authorization: `Bearer ${getApiToken()}` } : {}),
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
         ...init?.headers,
       },

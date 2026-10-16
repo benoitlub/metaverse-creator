@@ -1,3 +1,4 @@
+export { PaidGenerationLimiter } from "./security/generation";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { generateRoute } from "./routes/generate";
@@ -73,6 +74,11 @@ app.route("/", generateRoute);
 export default app;
 
 export interface Env {
+  GENERATION_ENABLED?: string;
+  GENERATION_API_TOKEN?: string;
+  PAID_GENERATION_ENABLED?: string;
+  PAID_GENERATION_GUARD?: DurableObjectNamespace;
+  MAX_PAID_JOBS_PER_DAY?: string;
   OCTOPUS_ENGINE_URL: string;
   OCTOPUS_ENGINE_API_KEY?: string;
   /** Mission route on the generation backend. Defaults to /mission. */

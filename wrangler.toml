@@ -8,6 +8,18 @@ compatibility_date = "2026-08-11"
 OCTOPUS_ENGINE_URL = "https://octopus-engine-app.benoitlubert.workers.dev"
 OCTOPUS_ENGINE_MISSION_PATH = "/mission"
 OCTOPUS_ENGINE_CAPABILITY = "content.generate"
-OCTOPUS_ENGINE_MOCK = "false"
+OCTOPUS_ENGINE_MOCK = "true"
 LORE_PROVIDER = "none"
 THREE_D_PROVIDER = "mock"
+# All generation OFF by default. Explicit secrets and paid quotas required.
+GENERATION_ENABLED = "false"
+PAID_GENERATION_ENABLED = "false"
+MAX_PAID_JOBS_PER_DAY = "1"
+
+[[durable_objects.bindings]]
+name = "PAID_GENERATION_GUARD"
+class_name = "PaidGenerationLimiter"
+
+[[migrations]]
+tag = "paid-generation-limiter-v1"
+new_sqlite_classes = ["PaidGenerationLimiter"]

@@ -29,7 +29,7 @@ describe("Meshy multiview", () => {
     const job = await new MeshyMultiImageProvider("test-only-key").getJob("job-123");
     expect(job.state).toBe("succeeded");
     expect(job.modelUrl).toContain("console.glb");
-    expect(String(fetch.mock.calls[0][0])).toContain("/openapi/v1/multi-image-to-3d/job-123");
+    expect(String((fetch.mock.calls as unknown as Array<[string, RequestInit?]>)[0][0])).toContain("/openapi/v1/multi-image-to-3d/job-123");
   });
   it("does not accept missing views or missing API keys", async () => {
     expect(() => new MeshyMultiImageProvider("")).toThrow();

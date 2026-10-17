@@ -61,7 +61,16 @@ generateRoute.post("/generate", async (c) => {
     let backendStatus: string;
     let operationId: string | undefined;
 
-    if (imageUrls.length) {
+    if (selectedProvider === "procedural") {
+      // The geometry comes from a fixed, locally versioned blueprint.
+      // No Mistral/Octopus mission or external HTTP API is executed.
+      if (!/creature[ -]?sync/i.test(intent)) {
+        return c.json({ error: "Only Creature-Sync Console is available in procedural v0.1" }, 400);
+      }
+      prompt = "Creature-Sync Console — local procedural blueprint v0.1";
+      loreSource = "local-procedural-blueprint";
+      backendStatus = "not-needed";
+    } else if (imageUrls.length) {
       // Image-guided reconstruction needs no Octopus executor: pass image views
       // directly to Meshy. The optional intent is only an audit description.
       prompt = intent || "Image-guided 3D reconstruction from supplied views";

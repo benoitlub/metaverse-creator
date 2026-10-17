@@ -107,9 +107,9 @@ function init():void{
     } else {
       for(let i=0;i<38;i++){
         const xx=x-bound+2*bound*i/37;
-        const yy2=1.60+.06*Math.sin(i*.7)+.12*Math.sin(i*1.43)*Math.exp(-((i-18)/8)**2);
+        const yy2=1.60+.06*Math.sin(i*.7)+.12*Math.sin(i*1.43)*Math.exp(-Math.pow((i-18)/8,2));
         const next=x-bound+2*bound*(i+1)/37;
-        const zz=1.60+.06*Math.sin((i+1)*.7)+.12*Math.sin((i+1)*1.43)*Math.exp(-(((i+1)-18)/8)**2);
+        const zz=1.60+.06*Math.sin((i+1)*.7)+.12*Math.sin((i+1)*1.43)*Math.exp(-Math.pow(((i+1)-18)/8,2));
         rod([xx,yy-.097,yy2],[next,yy-.097,zz],.004,color);
       }
     }

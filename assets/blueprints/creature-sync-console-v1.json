@@ -1,0 +1,60 @@
+{
+  "contract": "blacklace-procedural-asset-v1",
+  "assetId": "creature-sync-console",
+  "title": "Creature-Sync Console — Feuch Institute",
+  "runtime": "local-procedural-geometry",
+  "unit": "metre",
+  "axes": {
+    "front": "-Y",
+    "up": "+Z"
+  },
+  "dimensionsApproxMetres": {
+    "width": 4.6,
+    "depth": 1.55,
+    "height": 2.27
+  },
+  "referenceImages": [
+    "console_créature_sync_vues_techniques.png",
+    "console_bioacoustique_de_l_institut_feuch.png"
+  ],
+  "components": [
+    {
+      "kind": "support",
+      "count": 2,
+      "material": "sandstone"
+    },
+    {
+      "kind": "curved-console",
+      "count": 1,
+      "material": "dark-metal-brass"
+    },
+    {
+      "kind": "bioacoustic-screens",
+      "count": 3,
+      "material": "spectral-cyan-violet"
+    },
+    {
+      "kind": "microphone-boom",
+      "count": 2
+    },
+    {
+      "kind": "specimen-chambers",
+      "count": 2
+    },
+    {
+      "kind": "central-controls",
+      "count": 1
+    },
+    {
+      "kind": "Feuch-eye",
+      "count": 1
+    }
+  ],
+  "source": "user concept art, manually translated to a deterministic procedural blueprint; not an Octopus generated document",
+  "ownership": "code and custom geometry in user-owned repo",
+  "limitations": [
+    "Blockout, not faithful reconstruction",
+    "No animation or simulation until integrated into game engine",
+    "No Meshy or Tripo credits used"
+  ]
+}

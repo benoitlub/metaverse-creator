@@ -128,12 +128,12 @@ export function App() {
           </div>
         </header>
 
-        <label className="mobile-nav">
-          <span>Navigation</span>
-          <select value={page} onChange={(event) => setPage(event.target.value as Page)}>
+        <div className="mobile-nav">
+          <label htmlFor="mobile-page">Navigation</label>
+          <select id="mobile-page" value={page} onChange={(event) => setPage(event.target.value as Page)}>
             {nav.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
           </select>
-        </label>
+        </div>
 
         {page === "dashboard" && (
           <Dashboard health={health} healthError={healthError} onGenerate={() => setPage("ai")} />

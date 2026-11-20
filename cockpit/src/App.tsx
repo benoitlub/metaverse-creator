@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
+  Box,
   Boxes,
   Cable,
   Cpu,
@@ -23,10 +24,13 @@ import {
   type Job,
 } from "./services/api";
 
+const Studio = lazy(() => import("./Studio"));
+
 type Page =
   | "dashboard"
   | "worlds"
   | "scenes"
+  | "studio"
   | "bridge"
   | "operations"
   | "ai"
@@ -37,6 +41,7 @@ const nav: Array<{ id: Page; label: string; icon: typeof Gauge }> = [
   { id: "dashboard", label: "Dashboard", icon: Gauge },
   { id: "worlds", label: "Worlds & Scenes", icon: Layers3 },
   { id: "scenes", label: "Scene Inspector", icon: Boxes },
+  { id: "studio", label: "3D Studio", icon: Box },
   { id: "bridge", label: "Unity Bridge", icon: Cable },
   { id: "operations", label: "Operations", icon: History },
   { id: "ai", label: "AI / Generation", icon: Sparkles },
@@ -90,6 +95,8 @@ export function App() {
           {nav.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
+              aria-label={label}
+              aria-current={page === id ? "page" : undefined}
               className={page === id ? "nav-item active" : "nav-item"}
               onClick={() => setPage(id)}
             >
@@ -121,11 +128,25 @@ export function App() {
           </div>
         </header>
 
+        <label className="mobile-nav">
+          <span>Navigation</span>
+          <select value={page} onChange={(event) => setPage(event.target.value as Page)}>
+            {nav.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
+          </select>
+        </label>
+
         {page === "dashboard" && (
           <Dashboard health={health} healthError={healthError} onGenerate={() => setPage("ai")} />
         )}
         {page === "ai" && <GenerationPanel health={health} />}
-        {page !== "dashboard" && page !== "ai" && page !== "settings" && <Workspace page={page} />}
+        {page === "studio" && (
+          <Suspense fallback={<div className="content" role="status">Loading 3D Studio…</div>}>
+            <Studio />
+          </Suspense>
+        )}
+        {page !== "dashboard" && page !== "ai" && page !== "settings" && page !== "studio" && (
+          <Workspace page={page} />
+        )}
         {page === "settings" && (
           <SettingsPanel apiBase={apiBase} setApiBase={setApiBaseState} saveApi={saveApi} />
         )}
@@ -424,9 +445,11 @@ function GenerationPanel({ health }: { health: Health | null }) {
   );
 }
 
-function Workspace({ page }: { page: Page }) {
+type WorkspacePage = Exclude<Page, "dashboard" | "settings" | "ai" | "studio">;
+
+function Workspace({ page }: { page: WorkspacePage }) {
   const data: Record<
-    Exclude<Page, "dashboard" | "settings" | "ai">,
+    WorkspacePage,
     { title: string; description: string }
   > = {
     worlds: { title: "Worlds & Scenes", description: "Organize worlds and inspect their scene graph." },
@@ -448,7 +471,7 @@ function Workspace({ page }: { page: Page }) {
     },
   };
 
-  const current = data[page as Exclude<Page, "dashboard" | "settings" | "ai">];
+  const current = data[page];
 
   return (
     <div className="content">

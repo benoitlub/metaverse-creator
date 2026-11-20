@@ -56,3 +56,6 @@ a.primary, a.secondary { display: inline-flex; align-items: center; gap: 7px; te
   .mobile-nav { display: flex; align-items: center; gap: 10px; margin: 12px 15px 0; font-size: 12px; }
   .mobile-nav select { min-height: 44px; padding: 6px 10px; color: inherit; background: #151a22; border: 1px solid #28303b; border-radius: 6px; font: inherit; }
 }
+.studio-placements fieldset { min-width: 0; margin: 12px 0 0; border: 1px solid #242b35; border-radius: 6px; }
+.studio-placements legend { font-size: 12px; }
+.studio-placements .actions { margin-top: 0; }

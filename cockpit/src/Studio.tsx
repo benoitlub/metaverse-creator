@@ -1,18 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import {
   AxesHelper,
+  Box3,
+  Group,
   Color,
   DirectionalLight,
   GridHelper,
   HemisphereLight,
   Mesh,
   MeshStandardMaterial,
+  type Object3D,
   PerspectiveCamera,
   Scene,
   TorusKnotGeometry,
+  Vector3,
   WebGLRenderer,
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { disposeGlbScenes, loadGlbPreview } from "./glbPreview";
+import { modelUrl, type Job } from "./services/api";
 
 function createViewport(host: HTMLDivElement, setError: (error: string | null) => void) {
   const canvas = document.createElement("canvas");
@@ -47,6 +53,8 @@ function createViewport(host: HTMLDivElement, setError: (error: string | null) =
   const demo = new Mesh(geometry, material);
   demo.position.y = 1.5;
   scene.add(demo);
+  const preview = new Group();
+  scene.add(preview);
 
   const render = () => {
     if (!context.isContextLost()) renderer.render(scene, camera);
@@ -80,6 +88,24 @@ function createViewport(host: HTMLDivElement, setError: (error: string | null) =
       demo.rotation.y = (rotation * Math.PI) / 180;
       render();
     },
+    showModel(model: Object3D) {
+      const bounds = new Box3().setFromObject(model);
+      const size = bounds.getSize(new Vector3());
+      const extent = Math.max(size.x, size.y, size.z);
+      if (!Number.isFinite(extent) || extent <= 0) throw new Error("The GLB has no visible bounds.");
+
+      const center = bounds.getCenter(new Vector3());
+      const scale = 2.5 / extent;
+      preview.scale.setScalar(scale);
+      preview.position.set(-center.x * scale, 0.02 - bounds.min.y * scale, -center.z * scale);
+      preview.add(model);
+      controls.reset();
+      render();
+    },
+    clearModel() {
+      preview.clear();
+      render();
+    },
     resetView: () => controls.reset(),
     dispose() {
       observer.disconnect();
@@ -97,10 +123,21 @@ function createViewport(host: HTMLDivElement, setError: (error: string | null) =
   };
 }
 
-export default function Studio() {
+export default function Studio({ job, onClosePreview }: {
+  job: Job | null;
+  onClosePreview: () => void;
+}) {
   const host = useRef<HTMLDivElement>(null);
   const viewport = useRef<ReturnType<typeof createViewport> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [modelStatus, setModelStatus] = useState<{
+    url: string;
+    state: "ready" | "error";
+    message?: string;
+  } | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const url = job?.state === "succeeded" && job.ready ? modelUrl(job.id) : null;
+  const status = modelStatus?.url === url ? modelStatus : null;
   const [showDemo, setShowDemo] = useState(true);
   const [rotation, setRotation] = useState(0);
 
@@ -123,8 +160,40 @@ export default function Studio() {
   }, []);
 
   useEffect(() => {
-    viewport.current?.updateDemo(showDemo, rotation);
-  }, [showDemo, rotation]);
+    viewport.current?.updateDemo(!url && showDemo, rotation);
+  }, [url, showDemo, rotation]);
+
+  useEffect(() => {
+    const scene = viewport.current;
+    if (!url || !scene) return;
+    const controller = new AbortController();
+    const { signal } = controller;
+    let scenes: Object3D[] = [];
+
+    loadGlbPreview(url, signal).then((gltf) => {
+      if (signal.aborted) {
+        disposeGlbScenes(gltf.scenes);
+        return;
+      }
+      scenes = gltf.scenes;
+      scene.showModel(gltf.scene);
+      setModelStatus({ url, state: "ready" });
+    }).catch((failure: unknown) => {
+      if (!signal.aborted) {
+        setModelStatus({
+          url,
+          state: "error",
+          message: failure instanceof Error ? failure.message : "Unable to preview the model.",
+        });
+      }
+    });
+
+    return () => {
+      controller.abort();
+      if (viewport.current === scene) scene.clearModel();
+      disposeGlbScenes(scenes);
+    };
+  }, [url, attempt]);
 
   const toggleDemo = () => {
     setShowDemo(!showDemo);
@@ -134,7 +203,21 @@ export default function Studio() {
   return (
     <div className="content">
       <section className="panel">
-        <h2><span lang="fr">Démo locale</span> · Procedural knot</h2>
+        {url && job ? (
+          <>
+            <h2>GLB preview</h2>
+            <p className="muted">
+              Asset provider {job.provider} · {job.provider === "mock" ? "Mock asset" : "Real asset"}
+            </p>
+            {!error && (
+              <p className="muted" role="status">
+                {status?.state === "ready" ? "Model loaded." : status?.message ?? "Loading model…"}
+              </p>
+            )}
+          </>
+        ) : (
+          <h2><span lang="fr">Démo locale</span> · Procedural knot</h2>
+        )}
         <p id="studio-help" className="muted">
           Drag to orbit. Scroll or pinch to zoom. Right-drag or drag with two fingers to pan.
         </p>
@@ -145,10 +228,26 @@ export default function Studio() {
           <button className="secondary" onClick={() => viewport.current?.resetView()} disabled={!!error}>
             Reset view
           </button>
-          <button className="secondary" onClick={toggleDemo} disabled={!!error}>
-            {showDemo ? "Remove demo object" : "Add demo object"}
-          </button>
-          {showDemo && (
+          {url ? (
+            <>
+              <a className="secondary" href={url} download>Download GLB</a>
+              <button className="secondary" onClick={() => {
+                setModelStatus(null);
+                onClosePreview();
+              }}>Return to local demo</button>
+              {status?.state === "error" && !error && (
+                <button className="secondary" onClick={() => {
+                  setModelStatus(null);
+                  setAttempt((value) => value + 1);
+                }}>Retry preview</button>
+              )}
+            </>
+          ) : (
+            <button className="secondary" onClick={toggleDemo} disabled={!!error}>
+              {showDemo ? "Remove demo object" : "Add demo object"}
+            </button>
+          )}
+          {!url && showDemo && (
             <label className="studio-rotation">
               Object rotation
               <input

@@ -53,6 +53,7 @@ const errorMessage = (error: unknown, fallback: string): string =>
   error instanceof Error ? error.message : fallback;
 
 export function App() {
+  const [previewJob, setPreviewJob] = useState<Job | null>(null);
   const [page, setPage] = useState<Page>("dashboard");
   const [apiBase, setApiBaseState] = useState(getApiBase());
   const [health, setHealth] = useState<Health | null>(null);
@@ -138,10 +139,15 @@ export function App() {
         {page === "dashboard" && (
           <Dashboard health={health} healthError={healthError} onGenerate={() => setPage("ai")} />
         )}
-        {page === "ai" && <GenerationPanel health={health} />}
+        {page === "ai" && (
+          <GenerationPanel health={health} onPreview={(job) => {
+            setPreviewJob(job);
+            setPage("studio");
+          }} />
+        )}
         {page === "studio" && (
           <Suspense fallback={<div className="content" role="status">Loading 3D Studio…</div>}>
-            <Studio />
+            <Studio job={previewJob} onClosePreview={() => setPreviewJob(null)} />
           </Suspense>
         )}
         {page !== "dashboard" && page !== "ai" && page !== "settings" && page !== "studio" && (
@@ -289,7 +295,10 @@ function Dashboard({
 const POLL_INTERVAL_MS = 1_500;
 
 /** Intent form, then live job polling through to the downloadable model. */
-function GenerationPanel({ health }: { health: Health | null }) {
+function GenerationPanel({ health, onPreview }: {
+  health: Health | null;
+  onPreview: (job: Job) => void;
+}) {
   const [intent, setIntent] = useState("");
   const [started, setStarted] = useState<GenerationStarted | null>(null);
   const [job, setJob] = useState<Job | null>(null);
@@ -413,6 +422,9 @@ function GenerationPanel({ health }: { health: Health | null }) {
               >
                 <Download size={14} /> {job.ready ? "Download GLB" : "Waiting for the model…"}
               </a>
+              {job.state === "succeeded" && job.ready && (
+                <button className="secondary" onClick={() => onPreview(job)}>Preview in 3D Studio</button>
+              )}
             </div>
           </section>
 

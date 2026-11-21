@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 2d571843ec01756418fac6056bd07b19c159db13
+          ref: 4aba459549acc8baa6c7a611a90fe4f8e1ecce6f
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -29,6 +29,9 @@ jobs:
         working-directory: cockpit
       - run: npm run build -- --base=./
         working-directory: cockpit
+        env:
+          VITE_BLACKLACE_PREVIEW: "true"
+          VITE_WORKER_URL: https://blacklace-metaverse.benoitlubert.workers.dev
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

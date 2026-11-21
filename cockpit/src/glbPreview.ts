@@ -11,7 +11,7 @@ import {
   Texture,
 } from "three";
 
-export async function loadGlbPreview(url: string, signal: AbortSignal) {
+async function fetchModel(url: string, signal: AbortSignal) {
   let response: Response;
   try {
     response = await fetch(url, { signal });
@@ -20,7 +20,11 @@ export async function loadGlbPreview(url: string, signal: AbortSignal) {
   }
   if (!response.ok) throw new Error(`Model download failed (HTTP ${response.status}).`);
 
-  const buffer = await response.arrayBuffer();
+  return response.arrayBuffer();
+}
+
+export async function loadGlbPreview(source: string | File, signal: AbortSignal) {
+  const buffer = typeof source === "string" ? await fetchModel(source, signal) : await source.arrayBuffer();
   const header = new DataView(buffer);
   if (buffer.byteLength < 12 || header.getUint32(0, true) !== 0x46546c67 ||
       header.getUint32(4, true) !== 2 || header.getUint32(8, true) !== buffer.byteLength) {

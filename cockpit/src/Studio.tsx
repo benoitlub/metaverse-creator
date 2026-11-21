@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  AnimationMixer,
+  type AnimationClip,
   AxesHelper,
   Box3,
   Group,
@@ -20,6 +22,8 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { disposeGlbScenes, loadGlbPreview } from "./glbPreview";
 import { modelUrl, type Job } from "./services/api";
 import { MAX_PLACEMENTS, PLACEMENT_LIMIT, readLayout, writeLayout, type Placement } from "./studioLayout";
+
+const blacklaceDemoUrl = `${import.meta.env.BASE_URL}models/blacklace-dolmen.glb`;
 
 function createViewport(host: HTMLDivElement, setError: (error: string | null) => void) {
   const canvas = document.createElement("canvas");
@@ -49,6 +53,11 @@ function createViewport(host: HTMLDivElement, setError: (error: string | null) =
   keyLight.position.set(4, 6, 3);
   scene.add(grid, axes, keyLight, new HemisphereLight("#d6e9ff", "#414457", 1.6));
 
+  const rimLight = new DirectionalLight("#a6d7ff", 2);
+  rimLight.position.set(-3, 2, -4);
+  rimLight.visible = false;
+  scene.add(rimLight);
+
   const geometry = new TorusKnotGeometry(0.9, 0.27, 96, 12);
   const material = new MeshStandardMaterial({ color: "#11cddd", roughness: 0.35 });
   const demo = new Mesh(geometry, material);
@@ -58,8 +67,24 @@ function createViewport(host: HTMLDivElement, setError: (error: string | null) =
   const layout = new Group();
   scene.add(preview, layout);
 
+  let mixer: AnimationMixer | null = null;
+  let lastFrame: number | null = null;
   const render = () => {
     if (!context.isContextLost()) renderer.render(scene, camera);
+  };
+  const animate = (now: number) => {
+    if (!mixer) return;
+    mixer.update(lastFrame === null ? 0 : Math.min((now - lastFrame) / 1000, 0.1));
+    lastFrame = now;
+    render();
+  };
+  let previewCenterY = 1.25;
+  const framePreview = () => {
+    const halfFov = Math.atan(Math.tan(camera.fov * Math.PI / 360) * Math.min(1, camera.aspect));
+    const distance = 1.85 / Math.sin(halfFov);
+    controls.target.set(0, previewCenterY, 0);
+    camera.position.copy(new Vector3(1, 0.45, 1.55).normalize().multiplyScalar(distance).add(controls.target));
+    controls.update();
   };
   const resize = () => {
     const { clientWidth: width, clientHeight: height } = host;
@@ -90,7 +115,7 @@ function createViewport(host: HTMLDivElement, setError: (error: string | null) =
       demo.rotation.y = (rotation * Math.PI) / 180;
       render();
     },
-    showModel(model: Object3D) {
+    showModel(model: Object3D, clip?: AnimationClip) {
       const bounds = new Box3().setFromObject(model);
       const size = bounds.getSize(new Vector3());
       const extent = Math.max(size.x, size.y, size.z);
@@ -98,14 +123,27 @@ function createViewport(host: HTMLDivElement, setError: (error: string | null) =
 
       const center = bounds.getCenter(new Vector3());
       const scale = 2.5 / extent;
+      previewCenterY = 0.02 + size.y * scale / 2;
       preview.scale.setScalar(scale);
       preview.position.set(-center.x * scale, 0.02 - bounds.min.y * scale, -center.z * scale);
       preview.add(model);
-      controls.reset();
+      rimLight.visible = true;
+      framePreview();
+      if (clip) {
+        mixer = new AnimationMixer(model);
+        mixer.clipAction(clip).play();
+        renderer.setAnimationLoop(animate);
+      }
       render();
     },
     clearModel() {
+      renderer.setAnimationLoop(null);
+      mixer?.stopAllAction();
+      mixer = null;
+      lastFrame = null;
       preview.clear();
+      rimLight.visible = false;
+      controls.reset();
       render();
     },
     setLayoutVisible(visible: boolean) {
@@ -132,7 +170,7 @@ function createViewport(host: HTMLDivElement, setError: (error: string | null) =
       layout.clear();
       render();
     },
-    resetView: () => controls.reset(),
+    resetView: () => preview.children.length ? framePreview() : controls.reset(),
     dispose() {
       observer.disconnect();
       controls.removeEventListener("change", render);
@@ -143,6 +181,8 @@ function createViewport(host: HTMLDivElement, setError: (error: string | null) =
       material.dispose();
       grid.dispose();
       axes.dispose();
+      renderer.setAnimationLoop(null);
+      mixer?.stopAllAction();
       renderer.dispose();
       canvas.remove();
     },
@@ -157,13 +197,17 @@ export default function Studio({ job, onClosePreview }: {
   const viewport = useRef<ReturnType<typeof createViewport> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [modelStatus, setModelStatus] = useState<{
-    url: string;
+    source: string | File;
     state: "ready" | "error";
     message?: string;
   } | null>(null);
   const [attempt, setAttempt] = useState(0);
   const url = job?.state === "succeeded" && job.ready ? modelUrl(job.id) : null;
-  const status = modelStatus?.url === url ? modelStatus : null;
+  const [localFile, setLocalFile] = useState<File | null>(null);
+  const [showBlacklaceDemo, setShowBlacklaceDemo] = useState(false);
+  const source = url ?? (showBlacklaceDemo ? blacklaceDemoUrl : localFile);
+  const blacklacePreview = source === blacklaceDemoUrl;
+  const status = modelStatus?.source === source ? modelStatus : null;
   const [layoutState, setLayoutState] = useState(() => {
     try {
       return { placements: readLayout(), error: null };
@@ -197,9 +241,9 @@ export default function Studio({ job, onClosePreview }: {
   }, []);
 
   useEffect(() => {
-    viewport.current?.updateDemo(!url && placements.length === 0 && showDemo, rotation);
-    viewport.current?.setLayoutVisible(!url);
-  }, [url, placements.length, showDemo, rotation]);
+    viewport.current?.updateDemo(!source && placements.length === 0 && showDemo, rotation);
+    viewport.current?.setLayoutVisible(!source);
+  }, [source, placements.length, showDemo, rotation]);
 
   useEffect(() => {
     layoutRef.current = placements;
@@ -237,23 +281,23 @@ export default function Studio({ job, onClosePreview }: {
 
   useEffect(() => {
     const scene = viewport.current;
-    if (!url || !scene) return;
+    if (!source || !scene) return;
     const controller = new AbortController();
     const { signal } = controller;
     let scenes: Object3D[] = [];
 
-    loadGlbPreview(url, signal).then((gltf) => {
+    loadGlbPreview(source, signal).then((gltf) => {
       if (signal.aborted) {
         disposeGlbScenes(gltf.scenes);
         return;
       }
       scenes = gltf.scenes;
-      scene.showModel(gltf.scene);
-      setModelStatus({ url, state: "ready" });
+      scene.showModel(gltf.scene, gltf.animations[0]);
+      setModelStatus({ source, state: "ready" });
     }).catch((failure: unknown) => {
       if (!signal.aborted) {
         setModelStatus({
-          url,
+          source,
           state: "error",
           message: failure instanceof Error ? failure.message : "Unable to preview the model.",
         });
@@ -265,7 +309,7 @@ export default function Studio({ job, onClosePreview }: {
       if (viewport.current === scene) scene.clearModel();
       disposeGlbScenes(scenes);
     };
-  }, [url, attempt]);
+  }, [source, attempt]);
 
   const save = (next: Placement[]) => {
     try {
@@ -280,7 +324,9 @@ export default function Studio({ job, onClosePreview }: {
 
   const closePreview = () => {
     setModelStatus(null);
-    onClosePreview();
+    if (url) onClosePreview();
+    setLocalFile(null);
+    setShowBlacklaceDemo(false);
   };
 
   const insert = () => {
@@ -308,11 +354,15 @@ export default function Studio({ job, onClosePreview }: {
   return (
     <div className="content">
       <section className="panel">
-        {url && job ? (
+        {source ? (
           <>
-            <h2>GLB preview</h2>
+            <h2>{blacklacePreview ? "Blacklace Island · Le dolmen" : "GLB preview"}</h2>
             <p className="muted">
-              Asset provider {job.provider} · {job.provider === "mock" ? "Mock asset" : job.provider === "procedural" ? "Procedural asset" : "Real asset"}
+              {url && job
+                ? `Asset provider ${job.provider} · ${job.provider === "mock" ? "Mock asset" : job.provider === "procedural" ? "Procedural asset" : "Real asset"}`
+                : blacklacePreview
+                  ? <span lang="fr">Clairière circulaire, mousse phosphorescente et carré SATOR.</span>
+                  : localFile?.name}
             </p>
             {!error && (
               <p className="muted" role="status">
@@ -326,7 +376,7 @@ export default function Studio({ job, onClosePreview }: {
           <h2><span lang="fr">Démo locale</span> · Procedural knot</h2>
         )}
         {storageError && <p role="status">{storageError}</p>}
-        {!url && layoutError && <p role="status">{layoutError}</p>}
+        {!source && layoutError && <p role="status">{layoutError}</p>}
         <p id="studio-help" className="muted">
           Drag to orbit. Scroll or pinch to zoom. Right-drag or drag with two fingers to pan.
         </p>
@@ -337,9 +387,21 @@ export default function Studio({ job, onClosePreview }: {
           <button className="secondary" onClick={() => viewport.current?.resetView()} disabled={!!error}>
             Reset view
           </button>
-          {url ? (
+          {!source && (
+            <button className="primary" onClick={() => setShowBlacklaceDemo(true)} disabled={!!error}>
+              Explorer le dolmen
+            </button>
+          )}
+          {!source && (
+            <label>
+              Open a local GLB
+              <input type="file" accept=".glb,model/gltf-binary" disabled={!!error}
+                onChange={(event) => setLocalFile(event.target.files?.[0] ?? null)} />
+            </label>
+          )}
+          {source ? (
             <>
-              <a className="secondary" href={url} download>Download GLB</a>
+              {url && <a className="secondary" href={url} download>Download GLB</a>}
               {job?.provider === "procedural" && status?.state === "ready" && (
                 placements.length >= MAX_PLACEMENTS
                   ? <p className="muted">The local scene is full (12 assets).</p>
@@ -360,7 +422,7 @@ export default function Studio({ job, onClosePreview }: {
               {showDemo ? "Remove demo object" : "Add demo object"}
             </button>
           )}
-          {!url && placements.length === 0 && showDemo && (
+          {!source && placements.length === 0 && showDemo && (
             <label className="studio-rotation">
               Object rotation
               <input
@@ -371,7 +433,7 @@ export default function Studio({ job, onClosePreview }: {
             </label>
           )}
         </div>
-        {!url && placements.length > 0 && (
+        {!source && placements.length > 0 && (
           <div className="studio-placements">
             <p className="muted">Placement saved in this browser.</p>
             {placements.map((item, index) => (

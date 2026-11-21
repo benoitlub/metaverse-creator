@@ -53,6 +53,7 @@ const errorMessage = (error: unknown, fallback: string): string =>
   error instanceof Error ? error.message : fallback;
 
 export function App() {
+  const [showRotas, setShowRotas] = useState(false);
   const [previewJob, setPreviewJob] = useState<Job | null>(null);
   const [page, setPage] = useState<Page>(import.meta.env.VITE_BLACKLACE_PREVIEW === "true" ? "studio" : "dashboard");
   const [apiBase, setApiBaseState] = useState(getApiBase());
@@ -141,14 +142,30 @@ export function App() {
         )}
         {page === "ai" && (
           <GenerationPanel health={health} onPreview={(job) => {
+            setShowRotas(false);
             setPreviewJob(job);
             setPage("studio");
           }} />
         )}
         {page === "studio" && (
-          <Suspense fallback={<div className="content" role="status">Loading 3D Studio…</div>}>
-            <Studio job={previewJob} onClosePreview={() => setPreviewJob(null)} />
-          </Suspense>
+          <>
+            <div className="studio-scenes" role="group" aria-label="Scènes Blacklace Island">
+              <button className="secondary" aria-pressed={!showRotas} onClick={() => setShowRotas(false)}>
+                Studio et dolmen
+              </button>
+              <button className="secondary" aria-pressed={showRotas} onClick={() => setShowRotas(true)}>
+                Place de Rotas
+              </button>
+            </div>
+            {showRotas ? (
+              <iframe className="rotas-scene" src={`${import.meta.env.BASE_URL}rotas.html`}
+                title="Blacklace Island · Place de Rotas" />
+            ) : (
+              <Suspense fallback={<div className="content" role="status">Loading 3D Studio…</div>}>
+                <Studio job={previewJob} onClosePreview={() => setPreviewJob(null)} />
+              </Suspense>
+            )}
+          </>
         )}
         {page !== "dashboard" && page !== "ai" && page !== "settings" && page !== "studio" && (
           <Workspace page={page} />

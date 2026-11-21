@@ -9,11 +9,7 @@
  * specification requires.
  */
 
-const GLB_MAGIC = 0x46546c67; // "glTF"
-const CHUNK_JSON = 0x4e4f534a; // "JSON"
-const CHUNK_BIN = 0x004e4942; // "BIN\0"
-
-const align4 = (value: number): number => Math.ceil(value / 4) * 4;
+import { align4, packGlb } from "./glb";
 
 const POSITIONS = [0, 0, 0, 1, 0, 0, 0, 1, 0];
 const INDICES = [0, 1, 2];
@@ -53,37 +49,9 @@ export function buildMockGlb(name = "GeneratedAsset"): ArrayBuffer {
     ],
   };
 
-  const jsonBytes = new TextEncoder().encode(JSON.stringify(gltf));
-  const jsonLength = align4(jsonBytes.length);
-  const totalLength = 12 + 8 + jsonLength + 8 + binLength;
-
-  const buffer = new ArrayBuffer(totalLength);
-  const view = new DataView(buffer);
-  const bytes = new Uint8Array(buffer);
-
-  view.setUint32(0, GLB_MAGIC, true);
-  view.setUint32(4, 2, true);
-  view.setUint32(8, totalLength, true);
-
-  // JSON chunk, padded with spaces to a multiple of four.
-  let offset = 12;
-  view.setUint32(offset, jsonLength, true);
-  view.setUint32(offset + 4, CHUNK_JSON, true);
-  offset += 8;
-  bytes.fill(0x20, offset, offset + jsonLength);
-  bytes.set(jsonBytes, offset);
-  offset += jsonLength;
-
-  // BIN chunk, padded with zeroes.
-  view.setUint32(offset, binLength, true);
-  view.setUint32(offset + 4, CHUNK_BIN, true);
-  offset += 8;
-
-  const binStart = offset;
-  POSITIONS.forEach((value, index) => view.setFloat32(binStart + index * 4, value, true));
-  INDICES.forEach((value, index) =>
-    view.setUint16(binStart + indicesOffset + index * 2, value, true),
-  );
-
-  return buffer;
+  const binary = new Uint8Array(binLength);
+  const view = new DataView(binary.buffer);
+  POSITIONS.forEach((value, index) => view.setFloat32(index * 4, value, true));
+  INDICES.forEach((value, index) => view.setUint16(indicesOffset + index * 2, value, true));
+  return packGlb(gltf, binary);
 }

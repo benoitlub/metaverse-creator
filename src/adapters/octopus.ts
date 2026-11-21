@@ -9,6 +9,8 @@ import type { LoreContext, MissionResponse } from "../types";
  * for the contract this implementation was written against.
  */
 
+import { PROCEDURAL_CAPABILITY } from "./three-d/procedural";
+
 const DEFAULT_MISSION_PATH = "/mission";
 const DEFAULT_CAPABILITY = "content.generate";
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -91,24 +93,25 @@ export function buildMissionRequest(
   capability: string,
   operationId: string,
 ): Record<string, unknown> {
-  const prompt = lore.context
+  const procedural = capability === PROCEDURAL_CAPABILITY;
+  const prompt = procedural ? intent : lore.context
     ? `${lore.context}\n\nCreative intention: ${intent}`
     : `Creative intention: ${intent}`;
 
   return {
     operationId,
-    title: "Creative intention to 3D prompt",
+    title: procedural ? "Plan a procedural 3D asset" : "Creative intention to 3D prompt",
     objective:
-      "Turn a creative intention and its supplied context into a detailed, coherent text-to-3D prompt.",
+      procedural ? "Select a recipe for a supported 3D asset." : "Turn a creative intention and its supplied context into a detailed, coherent text-to-3D prompt.",
     requiredCapabilities: [capability],
-    authorizedResources: ["mistral"],
+    authorizedResources: procedural ? [] : ["mistral"],
     prompt,
     // The backend rejects a mission without a context id (CONTEXT_REQUIRED).
     // Only neutral metadata travels here: narrative content stays in `prompt`.
     context: {
       id: operationId,
       label: "metaverse-creator",
-      objective: "Generate a text-to-3D prompt.",
+      objective: procedural ? "Select a procedural recipe." : "Generate a text-to-3D prompt.",
       metadata: {
         source: "metaverse-creator",
         contextSource: lore.source,
@@ -122,6 +125,10 @@ export async function generatePrompt(
   lore: LoreContext,
   env: Env,
 ): Promise<GenerationOutcome> {
+  const procedural = env.THREE_D_PROVIDER?.trim().toLowerCase() === "procedural";
+  if (procedural && env.OCTOPUS_ENGINE_MOCK === "true") {
+    throw new Error("Procedural generation requires an Octopus executor. Disable the prompt mock.");
+  }
   if (env.OCTOPUS_ENGINE_MOCK === "true") {
     return { prompt: mockPrompt(intent, lore), backendStatus: "mocked" };
   }
@@ -132,7 +139,7 @@ export async function generatePrompt(
 
   const baseUrl = env.OCTOPUS_ENGINE_URL.replace(/\/$/, "");
   const path = env.OCTOPUS_ENGINE_MISSION_PATH || DEFAULT_MISSION_PATH;
-  const capability = env.OCTOPUS_ENGINE_CAPABILITY || DEFAULT_CAPABILITY;
+  const capability = procedural ? PROCEDURAL_CAPABILITY : env.OCTOPUS_ENGINE_CAPABILITY || DEFAULT_CAPABILITY;
   const operationId = `mvc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   const controller = new AbortController();

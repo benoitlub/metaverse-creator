@@ -2,9 +2,10 @@ import type { Env } from "../../index";
 import type { ThreeDProvider } from "../../types";
 import { MeshyProvider } from "./meshy";
 import { MockThreeDProvider } from "./mock";
+import { ProceduralThreeDProvider } from "./procedural";
 import { TripoProvider } from "./tripo";
 
-export const SUPPORTED_PROVIDERS = ["mock", "meshy", "tripo"] as const;
+export const SUPPORTED_PROVIDERS = ["mock", "meshy", "tripo", "procedural"] as const;
 
 /**
  * Single switching point between asset providers.
@@ -16,6 +17,8 @@ export function createThreeDProvider(env: Env, override?: string): ThreeDProvide
   switch (provider) {
     case "mock":
       return new MockThreeDProvider();
+    case "procedural":
+      return new ProceduralThreeDProvider();
     case "meshy":
       return new MeshyProvider(env.THREE_D_API_KEY ?? "", env.THREE_D_API_URL);
     case "tripo":

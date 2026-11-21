@@ -363,7 +363,7 @@ function GenerationPanel({ health, onPreview }: {
     <div className="content">
       <section className="panel settings">
         <span className="eyebrow">CREATIVE INTENT</span>
-        <h2>Generate an asset</h2>
+        <h2>{health?.providers.asset.name === "procedural" ? "Create with Octopus" : "Generate an asset"}</h2>
         <p>
           {health
             ? `Prompt through ${health.providers.generation.mode} generation, model from the ${health.providers.asset.name} provider.`
@@ -374,7 +374,9 @@ function GenerationPanel({ health, onPreview }: {
           <textarea
             rows={3}
             value={intent}
-            placeholder="Place du Marché de Rotas, fontaine centrale, pierre chaude et cuivre patiné"
+            placeholder={health?.providers.asset.name === "procedural"
+              ? "Un robot bleu ou une caisse rouge"
+              : "Place du Marché de Rotas, fontaine centrale, pierre chaude et cuivre patiné"}
             onChange={(event) => setIntent(event.target.value)}
           />
         </label>
@@ -448,7 +450,7 @@ function GenerationPanel({ health, onPreview }: {
                 Generated at<small>{new Date(started.trace.generatedAt).toLocaleString()}</small>
               </span>
             </div>
-            <h2>Prompt</h2>
+            <h2>{started.provider === "procedural" ? "Procedural recipe" : "Prompt"}</h2>
             <pre className="prompt">{started.prompt}</pre>
           </section>
         </div>

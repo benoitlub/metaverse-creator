@@ -19,6 +19,7 @@ import {
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { disposeGlbScenes, loadGlbPreview } from "./glbPreview";
 import { modelUrl, type Job } from "./services/api";
+import { MAX_PLACEMENTS, PLACEMENT_LIMIT, readLayout, writeLayout, type Placement } from "./studioLayout";
 
 function createViewport(host: HTMLDivElement, setError: (error: string | null) => void) {
   const canvas = document.createElement("canvas");
@@ -54,7 +55,8 @@ function createViewport(host: HTMLDivElement, setError: (error: string | null) =
   demo.position.y = 1.5;
   scene.add(demo);
   const preview = new Group();
-  scene.add(preview);
+  const layout = new Group();
+  scene.add(preview, layout);
 
   const render = () => {
     if (!context.isContextLost()) renderer.render(scene, camera);
@@ -106,6 +108,30 @@ function createViewport(host: HTMLDivElement, setError: (error: string | null) =
       preview.clear();
       render();
     },
+    setLayoutVisible(visible: boolean) {
+      layout.visible = visible;
+      render();
+    },
+    attachPlacement(id: string, model: Object3D) {
+      const group = new Group();
+      group.name = id;
+      group.add(model);
+      layout.add(group);
+      return group;
+    },
+    positionPlacements(placements: Placement[]) {
+      for (const placement of placements) {
+        const group = layout.getObjectByName(placement.id);
+        if (!group) continue;
+        group.position.set(placement.x, 0.02, placement.z);
+        group.rotation.y = placement.rotation * Math.PI / 180;
+      }
+      render();
+    },
+    clearLayout() {
+      layout.clear();
+      render();
+    },
     resetView: () => controls.reset(),
     dispose() {
       observer.disconnect();
@@ -138,6 +164,17 @@ export default function Studio({ job, onClosePreview }: {
   const [attempt, setAttempt] = useState(0);
   const url = job?.state === "succeeded" && job.ready ? modelUrl(job.id) : null;
   const status = modelStatus?.url === url ? modelStatus : null;
+  const [layoutState, setLayoutState] = useState(() => {
+    try {
+      return { placements: readLayout(), error: null };
+    } catch {
+      return { placements: [] as Placement[], error: "Unable to read the saved Studio scene." };
+    }
+  });
+  const { placements, error: storageError } = layoutState;
+  const [layoutError, setLayoutError] = useState<string | null>(null);
+  const layoutRef = useRef(placements);
+  const modelKeys = JSON.stringify(placements.map(({ id, jobId }) => ({ id, jobId })));
   const [showDemo, setShowDemo] = useState(true);
   const [rotation, setRotation] = useState(0);
 
@@ -160,8 +197,43 @@ export default function Studio({ job, onClosePreview }: {
   }, []);
 
   useEffect(() => {
-    viewport.current?.updateDemo(!url && showDemo, rotation);
-  }, [url, showDemo, rotation]);
+    viewport.current?.updateDemo(!url && placements.length === 0 && showDemo, rotation);
+    viewport.current?.setLayoutVisible(!url);
+  }, [url, placements.length, showDemo, rotation]);
+
+  useEffect(() => {
+    layoutRef.current = placements;
+    viewport.current?.positionPlacements(placements);
+  }, [placements]);
+
+  useEffect(() => {
+    const scene = viewport.current;
+    if (!scene) return;
+    const models: Pick<Placement, "id" | "jobId">[] = JSON.parse(modelKeys);
+    const controller = new AbortController();
+    const loaded: Object3D[] = [];
+    setLayoutError(null);
+
+    for (const { id, jobId } of models) {
+      loadGlbPreview(modelUrl(jobId), controller.signal).then((gltf) => {
+        if (controller.signal.aborted) {
+          disposeGlbScenes(gltf.scenes);
+          return;
+        }
+        loaded.push(...gltf.scenes);
+        scene.attachPlacement(id, gltf.scene);
+        scene.positionPlacements(layoutRef.current);
+      }).catch(() => {
+        if (!controller.signal.aborted) setLayoutError("One or more saved assets could not be loaded.");
+      });
+    }
+
+    return () => {
+      controller.abort();
+      if (viewport.current === scene) scene.clearLayout();
+      disposeGlbScenes(loaded);
+    };
+  }, [modelKeys]);
 
   useEffect(() => {
     const scene = viewport.current;
@@ -195,6 +267,39 @@ export default function Studio({ job, onClosePreview }: {
     };
   }, [url, attempt]);
 
+  const save = (next: Placement[]) => {
+    try {
+      writeLayout(next);
+      setLayoutState({ placements: next, error: null });
+      return true;
+    } catch {
+      setLayoutState({ placements, error: "Unable to save the Studio scene on this device." });
+      return false;
+    }
+  };
+
+  const closePreview = () => {
+    setModelStatus(null);
+    onClosePreview();
+  };
+
+  const insert = () => {
+    if (job?.provider !== "procedural" || status?.state !== "ready" || placements.length >= MAX_PLACEMENTS) return;
+    if (save([...placements, {
+      id: crypto.randomUUID(), jobId: job.id,
+      x: (placements.length % 4 - 1.5) * 1.6, z: Math.floor(placements.length / 4) * 1.6, rotation: 0,
+    }])) closePreview();
+  };
+
+  const move = (id: string, x: number, z: number, angle: number) => {
+    save(placements.map((item) => item.id === id ? {
+      ...item,
+      x: Math.max(-PLACEMENT_LIMIT, Math.min(PLACEMENT_LIMIT, item.x + x)),
+      z: Math.max(-PLACEMENT_LIMIT, Math.min(PLACEMENT_LIMIT, item.z + z)),
+      rotation: (item.rotation + angle) % 360,
+    } : item));
+  };
+
   const toggleDemo = () => {
     setShowDemo(!showDemo);
     setRotation(0);
@@ -207,7 +312,7 @@ export default function Studio({ job, onClosePreview }: {
           <>
             <h2>GLB preview</h2>
             <p className="muted">
-              Asset provider {job.provider} · {job.provider === "mock" ? "Mock asset" : "Real asset"}
+              Asset provider {job.provider} · {job.provider === "mock" ? "Mock asset" : job.provider === "procedural" ? "Procedural asset" : "Real asset"}
             </p>
             {!error && (
               <p className="muted" role="status">
@@ -215,9 +320,13 @@ export default function Studio({ job, onClosePreview }: {
               </p>
             )}
           </>
+        ) : placements.length ? (
+          <h2>Local scene</h2>
         ) : (
           <h2><span lang="fr">Démo locale</span> · Procedural knot</h2>
         )}
+        {storageError && <p role="status">{storageError}</p>}
+        {!url && layoutError && <p role="status">{layoutError}</p>}
         <p id="studio-help" className="muted">
           Drag to orbit. Scroll or pinch to zoom. Right-drag or drag with two fingers to pan.
         </p>
@@ -231,10 +340,14 @@ export default function Studio({ job, onClosePreview }: {
           {url ? (
             <>
               <a className="secondary" href={url} download>Download GLB</a>
-              <button className="secondary" onClick={() => {
-                setModelStatus(null);
-                onClosePreview();
-              }}>Return to local demo</button>
+              {job?.provider === "procedural" && status?.state === "ready" && (
+                placements.length >= MAX_PLACEMENTS
+                  ? <p className="muted">The local scene is full (12 assets).</p>
+                  : <button className="primary" onClick={insert} disabled={!!error}>Insert into local scene</button>
+              )}
+              <button className="secondary" onClick={closePreview}>
+                {placements.length ? "Return to local scene" : "Return to local demo"}
+              </button>
               {status?.state === "error" && !error && (
                 <button className="secondary" onClick={() => {
                   setModelStatus(null);
@@ -242,12 +355,12 @@ export default function Studio({ job, onClosePreview }: {
                 }}>Retry preview</button>
               )}
             </>
-          ) : (
+          ) : placements.length === 0 && (
             <button className="secondary" onClick={toggleDemo} disabled={!!error}>
               {showDemo ? "Remove demo object" : "Add demo object"}
             </button>
           )}
-          {!url && showDemo && (
+          {!url && placements.length === 0 && showDemo && (
             <label className="studio-rotation">
               Object rotation
               <input
@@ -258,6 +371,24 @@ export default function Studio({ job, onClosePreview }: {
             </label>
           )}
         </div>
+        {!url && placements.length > 0 && (
+          <div className="studio-placements">
+            <p className="muted">Placement saved in this browser.</p>
+            {placements.map((item, index) => (
+              <fieldset key={item.id}>
+                <legend>Asset {index + 1}</legend>
+                <div className="actions studio-actions">
+                  <button className="secondary" onClick={() => move(item.id, -0.5, 0, 0)}>Left</button>
+                  <button className="secondary" onClick={() => move(item.id, 0.5, 0, 0)}>Right</button>
+                  <button className="secondary" onClick={() => move(item.id, 0, -0.5, 0)}>Back</button>
+                  <button className="secondary" onClick={() => move(item.id, 0, 0.5, 0)}>Forward</button>
+                  <button className="secondary" onClick={() => move(item.id, 0, 0, 45)}>Rotate</button>
+                  <button className="secondary" onClick={() => save(placements.filter(({ id }) => id !== item.id))}>Remove</button>
+                </div>
+              </fieldset>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

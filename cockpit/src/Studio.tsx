@@ -204,7 +204,7 @@ export default function Studio({ job, onClosePreview }: {
   const [attempt, setAttempt] = useState(0);
   const url = job?.state === "succeeded" && job.ready ? modelUrl(job.id) : null;
   const [localFile, setLocalFile] = useState<File | null>(null);
-  const [showBlacklaceDemo, setShowBlacklaceDemo] = useState(false);
+  const [showBlacklaceDemo, setShowBlacklaceDemo] = useState(import.meta.env.VITE_BLACKLACE_PREVIEW === "true");
   const source = url ?? (showBlacklaceDemo ? blacklaceDemoUrl : localFile);
   const blacklacePreview = source === blacklaceDemoUrl;
   const status = modelStatus?.source === source ? modelStatus : null;

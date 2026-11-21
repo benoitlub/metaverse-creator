@@ -54,7 +54,7 @@ const errorMessage = (error: unknown, fallback: string): string =>
 
 export function App() {
   const [previewJob, setPreviewJob] = useState<Job | null>(null);
-  const [page, setPage] = useState<Page>("dashboard");
+  const [page, setPage] = useState<Page>(import.meta.env.VITE_BLACKLACE_PREVIEW === "true" ? "studio" : "dashboard");
   const [apiBase, setApiBaseState] = useState(getApiBase());
   const [health, setHealth] = useState<Health | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);

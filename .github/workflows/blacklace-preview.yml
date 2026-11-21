@@ -31,7 +31,7 @@ jobs:
         working-directory: cockpit
         env:
           VITE_BLACKLACE_PREVIEW: "true"
-          VITE_WORKER_URL: https://blacklace-metaverse.benoitlubert.workers.dev
+          VITE_WORKER_URL: https://blacklace-publisher-worker.benoitlubert.workers.dev/api/metaverse
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
